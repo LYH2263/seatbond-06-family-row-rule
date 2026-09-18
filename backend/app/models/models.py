@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -13,6 +13,7 @@ class Hall(Base):
     rows: Mapped[int] = mapped_column(Integer)
     cols: Mapped[int] = mapped_column(Integer)
     aisle_cols: Mapped[str] = mapped_column(String(80), default="")  # comma-separated
+    family_rows: Mapped[str] = mapped_column(String(80), default="", server_default="")  # comma-separated 1-based row numbers
     showtimes: Mapped[list["Showtime"]] = relationship(back_populates="hall")
 
 
@@ -36,6 +37,7 @@ class SeatHold(Base):
     start_col: Mapped[int] = mapped_column(Integer)
     end_col: Mapped[int] = mapped_column(Integer)
     party_size: Mapped[int] = mapped_column(Integer)
+    with_children: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     status: Mapped[str] = mapped_column(String(20), default="held")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     showtime: Mapped[Showtime] = relationship(back_populates="holds")

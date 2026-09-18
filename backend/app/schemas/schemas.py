@@ -8,7 +8,12 @@ class HallOut(BaseModel):
     rows: int
     cols: int
     aisle_cols: list[int]
+    family_rows: list[int]
     model_config = {"from_attributes": True}
+
+
+class HallFamilyUpdate(BaseModel):
+    family_rows: list[int] = Field(default_factory=list)
 
 
 class ShowtimeOut(BaseModel):
@@ -28,6 +33,7 @@ class HoldOut(BaseModel):
     start_col: int
     end_col: int
     party_size: int
+    with_children: bool
     status: str
     model_config = {"from_attributes": True}
 
@@ -36,6 +42,7 @@ class HoldRequest(BaseModel):
     showtime_id: int
     party_size: int = Field(ge=1, le=12)
     preferred_row: int | None = None
+    with_children: bool = False
 
 
 class ConflictOut(BaseModel):
@@ -51,6 +58,7 @@ class SeatMapCell(BaseModel):
     row: int
     col: int
     is_aisle: bool
+    is_family_row: bool
     occupied: bool
     heat: float
 
@@ -60,4 +68,5 @@ class SeatMapOut(BaseModel):
     hall_name: str
     rows: int
     cols: int
+    family_rows: list[int]
     cells: list[SeatMapCell]

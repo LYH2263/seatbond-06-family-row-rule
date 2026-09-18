@@ -1,4 +1,14 @@
-"""Contiguous seat bonding: aisle columns break runs; holds conflict on overlap."""
+"""Contiguous seat bonding: aisle columns break runs; holds conflict on overlap.
+
+Family rows partition the auditorium for auto search:
+* requests travelling with children may ONLY land inside family rows;
+* ordinary requests avoid family rows by default so the parent-child area
+  stays available.
+Aisle breaking always applies on top of the row filter, so a children request
+inside family rows can still fail when aisles cut every contiguous segment
+short — that failure is reported as FAMILY_FULL rather than silently falling
+back to non-family rows.
+"""
 
 from __future__ import annotations
 
@@ -17,6 +27,30 @@ class HoldSpan:
     row: int
     start_col: int
     end_col: int  # inclusive
+
+
+# Failure reason codes for search_bond.
+FAMILY_FULL = "family_full"  # children request: no long-enough free segment within family rows
+GENERAL_FULL = "general_full"  # ordinary request: no long-enough free segment outside family rows
+
+
+@dataclass(frozen=True)
+class BondSearchResult:
+    block: HoldSpan | None
+    reason: str | None = None  # None when block is found
+
+
+def parse_int_list(raw: str) -> list[int]:
+    """Parse a comma-separated int list ('2,4, 5') tolerating blanks."""
+    if not raw or not raw.strip():
+        return []
+    out: list[int] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if part:
+            out.append(int(part))
+    return out
+
 
 
 def contiguous_runs(row_cells: list[SeatCell]) -> list[tuple[int, int]]:
@@ -90,6 +124,49 @@ def find_bond_across_rows(
         if block is not None:
             return block
     return None
+
+
+def search_bond(
+    seats_by_row: dict[int, list[SeatCell]],
+    holds: list[HoldSpan],
+    party_size: int,
+    family_rows: set[int],
+    with_children: bool,
+    preferred_row: int | None = None,
+) -> BondSearchResult:
+    """Search for a contiguous block under family-row and aisle constraints.
+
+    Children requests are confined to family rows; failure there returns
+    FAMILY_FULL even if non-family rows still have seats — aisle cuts are
+    evaluated first inside each family row, so a too-short family segment is
+    never papered over by spilling into the ordinary area.
+    Ordinary requests search only non-family rows and never fall back into
+    family rows, returning GENERAL_FULL when the ordinary area is exhausted.
+    """
+    allowed_rows = {r for r in seats_by_row if (r in family_rows) == with_children}
+    if with_children and not family_rows:
+        return BondSearchResult(block=None, reason=FAMILY_FULL)
+    if not allowed_rows:
+        return BondSearchResult(
+            block=None, reason=FAMILY_FULL if with_children else GENERAL_FULL
+        )
+
+    # A preferred row is honoured only when it passes the family filter.
+    if preferred_row is not None and preferred_row in allowed_rows:
+        block = find_contiguous_block(
+            seats_by_row.get(preferred_row, []), holds, preferred_row, party_size
+        )
+        if block is not None:
+            return BondSearchResult(block=block)
+
+    for row in sorted(allowed_rows):
+        block = find_contiguous_block(seats_by_row[row], holds, row, party_size)
+        if block is not None:
+            return BondSearchResult(block=block)
+
+    return BondSearchResult(
+        block=None, reason=FAMILY_FULL if with_children else GENERAL_FULL
+    )
 
 
 def conflicts_with(existing: list[HoldSpan], candidate: HoldSpan) -> list[HoldSpan]:

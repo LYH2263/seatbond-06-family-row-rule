@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.models import ConflictLog, Hall, SeatHold, Showtime
 from app.schemas.schemas import (
     ConflictOut,
+    HallFamilyUpdate,
     HallOut,
     HoldOut,
     HoldRequest,
@@ -16,24 +17,43 @@ from app.schemas.schemas import (
     ShowtimeOut,
 )
 from app.services.bond_engine import (
+    FAMILY_FULL,
     HoldSpan,
     SeatCell,
     conflicts_with,
-    find_bond_across_rows,
-    find_contiguous_block,
+    parse_int_list,
+    search_bond,
 )
 
 api_router = APIRouter()
 
 
 def _aisles(hall: Hall) -> list[int]:
-    if not hall.aisle_cols.strip():
-        return []
-    return [int(x) for x in hall.aisle_cols.split(",") if x.strip()]
+    return parse_int_list(hall.aisle_cols)
+
+
+def _family_rows(hall: Hall) -> list[int]:
+    return parse_int_list(hall.family_rows)
 
 
 def _hall_out(h: Hall) -> HallOut:
-    return HallOut(id=h.id, name=h.name, rows=h.rows, cols=h.cols, aisle_cols=_aisles(h))
+    return HallOut(
+        id=h.id,
+        name=h.name,
+        rows=h.rows,
+        cols=h.cols,
+        aisle_cols=_aisles(h),
+        family_rows=_family_rows(h),
+    )
+
+
+def _build_seats_by_row(hall: Hall, aisles: set[int]) -> dict[int, list[SeatCell]]:
+    seats_by_row: dict[int, list[SeatCell]] = {}
+    for r in range(1, hall.rows + 1):
+        seats_by_row[r] = [
+            SeatCell(row=r, col=c, is_aisle=c in aisles) for c in range(1, hall.cols + 1)
+        ]
+    return seats_by_row
 
 
 @api_router.get("/health")
@@ -44,6 +64,21 @@ def health():
 @api_router.get("/halls", response_model=list[HallOut])
 def list_halls(db: Session = Depends(get_db)):
     return [_hall_out(h) for h in db.scalars(select(Hall).order_by(Hall.id)).all()]
+
+
+@api_router.put("/halls/{hall_id}/family-rows", response_model=HallOut)
+def update_family_rows(hall_id: int, body: HallFamilyUpdate, db: Session = Depends(get_db)):
+    hall = db.get(Hall, hall_id)
+    if not hall:
+        raise HTTPException(404, "影厅不存在")
+    invalid = [r for r in body.family_rows if r < 1 or r > hall.rows]
+    if invalid:
+        raise HTTPException(422, f"家庭排编号超出范围（1-{hall.rows}）：{invalid}")
+    # 去重并排序，统一逗号分隔存储。
+    hall.family_rows = ",".join(str(r) for r in sorted(set(body.family_rows)))
+    db.commit()
+    db.refresh(hall)
+    return _hall_out(hall)
 
 
 @api_router.get("/showtimes", response_model=list[ShowtimeOut])
@@ -72,6 +107,7 @@ def seatmap(showtime_id: int, db: Session = Depends(get_db)):
     hall = db.get(Hall, st.hall_id)
     assert hall
     aisles = set(_aisles(hall))
+    family = set(_family_rows(hall))
     holds = db.scalars(select(SeatHold).where(SeatHold.showtime_id == showtime_id)).all()
     occupied: set[tuple[int, int]] = set()
     for h in holds:
@@ -87,6 +123,7 @@ def seatmap(showtime_id: int, db: Session = Depends(get_db)):
                     row=r,
                     col=c,
                     is_aisle=c in aisles,
+                    is_family_row=r in family,
                     occupied=occ,
                     heat=1.0 if occ else (0.15 if c in aisles else 0.0),
                 )
@@ -96,6 +133,7 @@ def seatmap(showtime_id: int, db: Session = Depends(get_db)):
         hall_name=hall.name,
         rows=hall.rows,
         cols=hall.cols,
+        family_rows=sorted(family),
         cells=cells,
     )
 
@@ -118,31 +156,49 @@ def create_hold(body: HoldRequest, db: Session = Depends(get_db)):
     hall = db.get(Hall, st.hall_id)
     assert hall
     aisles = set(_aisles(hall))
+    family_rows = set(_family_rows(hall))
     existing = db.scalars(select(SeatHold).where(SeatHold.showtime_id == body.showtime_id)).all()
     holds = [HoldSpan(row=h.row, start_col=h.start_col, end_col=h.end_col) for h in existing]
-    seats_by_row: dict[int, list[SeatCell]] = {}
-    for r in range(1, hall.rows + 1):
-        seats_by_row[r] = [
-            SeatCell(row=r, col=c, is_aisle=c in aisles) for c in range(1, hall.cols + 1)
-        ]
+    seats_by_row = _build_seats_by_row(hall, aisles)
 
-    block = None
-    if body.preferred_row:
-        block = find_contiguous_block(
-            seats_by_row.get(body.preferred_row, []), holds, body.preferred_row, body.party_size
-        )
+    # Preferred rows outside the family filter are rejected for clarity: a
+    # children request must stay in a family row, and an ordinary request must
+    # not be guided into the parent-child area.
+    if body.preferred_row is not None:
+        in_family = body.preferred_row in family_rows
+        if body.with_children and not in_family:
+            raise HTTPException(422, "带儿童请求只能选择家庭排")
+        if not body.with_children and in_family:
+            raise HTTPException(422, "普通请求默认避开家庭排")
+
+    result = search_bond(
+        seats_by_row,
+        holds,
+        body.party_size,
+        family_rows,
+        body.with_children,
+        preferred_row=body.preferred_row,
+    )
+    block = result.block
     if block is None:
-        block = find_bond_across_rows(seats_by_row, holds, body.party_size)
-    if block is None:
+        if result.reason == FAMILY_FULL:
+            reason = (
+                f"家庭排内无足够连续空座（人数 {body.party_size}，过道会切断连续段，"
+                "且带儿童请求不可使用非家庭排）"
+            )
+            detail = "家庭排内连续空座不足"
+        else:
+            reason = f"非家庭排无足够连续空座（人数 {body.party_size}，普通请求默认避开家庭排）"
+            detail = "非家庭排连续空座不足"
         db.add(
             ConflictLog(
                 showtime_id=body.showtime_id,
                 party_size=body.party_size,
-                reason=f"无足够连续空座（人数 {body.party_size}）",
+                reason=reason,
             )
         )
         db.commit()
-        raise HTTPException(409, "无足够连续空座")
+        raise HTTPException(409, detail)
 
     hits = conflicts_with(holds, block)
     if hits:
@@ -164,6 +220,7 @@ def create_hold(body: HoldRequest, db: Session = Depends(get_db)):
         start_col=block.start_col,
         end_col=block.end_col,
         party_size=body.party_size,
+        with_children=body.with_children,
     )
     db.add(hold)
     db.commit()

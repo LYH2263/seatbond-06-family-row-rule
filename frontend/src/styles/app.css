@@ -276,3 +276,82 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   box-shadow: inset 0 -3px 0 #a83828, 0 0 8px rgba(232, 93, 76, .35);
 }
 .seat.aisle { background: var(--aisle); opacity: .3; }
+
+/* —— 家庭排（亲子区）：金色按排高亮 —— */
+.seat.family-row.free {
+  background: linear-gradient(180deg, #4a3c1a, #2e2610);
+  box-shadow: inset 0 -3px 0 #241c08, inset 0 0 0 1px rgba(232, 196, 106, .55);
+  color: #f0dca0;
+}
+.seat.family-row.occ {
+  box-shadow: inset 0 -3px 0 #a83828, inset 0 0 0 1.5px var(--cinema-gold),
+    0 0 10px rgba(232, 196, 106, .35);
+}
+.row-label {
+  width: 22px; height: 28px;
+  display: grid; place-items: center;
+  font-size: 10px; font-family: "IBM Plex Mono", monospace;
+  color: #5a4a3a;
+}
+.row-label-family {
+  color: var(--cinema-gold);
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(232, 196, 106, .6);
+  border-left: 2px solid rgba(232, 196, 106, .45);
+}
+.legend {
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-size: .75rem; color: var(--cinema-muted);
+  margin-left: .5rem;
+}
+.legend-swatch {
+  width: 12px; height: 12px; border-radius: 3px;
+  display: inline-block; margin-left: .75rem;
+}
+.legend-swatch.family { background: #4a3c1a; box-shadow: inset 0 0 0 1px rgba(232,196,106,.6); }
+.legend-swatch.aisle-s { background: var(--aisle); border: 1px solid #333; }
+.legend-swatch.occupied-s { background: var(--hot); }
+
+/* —— 影厅维护：家庭排排号选择 —— */
+.row-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip {
+  width: 30px; height: 26px;
+  padding: 0;
+  border-radius: 4px;
+  background: #1a1014;
+  color: var(--cinema-muted);
+  border: 1px solid #3a2a34;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .8rem;
+  cursor: pointer;
+}
+.chip:hover { color: var(--text); border-color: #5a4030; }
+.chip-family {
+  background: linear-gradient(180deg, #4a3c1a, #2e2610);
+  color: var(--cinema-gold);
+  border-color: var(--cinema-gold);
+  box-shadow: 0 0 8px rgba(232, 196, 106, .25);
+}
+.inline-note { margin-left: .6rem; font-size: .8rem; }
+
+.hint { color: var(--cinema-muted); font-size: .78rem; margin-top: .35rem; }
+.check-label { display: inline-flex; align-items: center; gap: .35rem; }
+.check-label input { width: auto; margin: 0; }
+.tag {
+  display: inline-block;
+  margin-left: .5rem;
+  padding: .05rem .45rem;
+  border-radius: 3px;
+  font-size: .7rem;
+  vertical-align: middle;
+}
+.tag-family {
+  background: rgba(232, 196, 106, .18);
+  color: var(--cinema-gold);
+  border: 1px solid rgba(232, 196, 106, .5);
+}
+.tag-normal {
+  background: rgba(150, 170, 200, .12);
+  color: #9fb4d0;
+  border: 1px solid rgba(150, 170, 200, .35);
+}
