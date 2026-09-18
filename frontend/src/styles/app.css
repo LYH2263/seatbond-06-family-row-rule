@@ -271,8 +271,36 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   font-size: 9px; font-family: "IBM Plex Mono", monospace; color: #c9d7f2;
 }
 .seat.free { background: var(--free); box-shadow: inset 0 -3px 0 #152840; }
+.seat.free.family {
+  background: linear-gradient(180deg, #3f7a52, #2c5a3c);
+  box-shadow:
+    inset 0 -3px 0 #1c3c28,
+    0 0 0 1px rgba(125, 222, 160, .55),
+    0 0 10px rgba(125, 222, 160, .18);
+}
+.seat.free.family:hover { outline: 1px solid var(--cinema-gold); }
 .seat.occ {
   background: var(--hot);
   box-shadow: inset 0 -3px 0 #a83828, 0 0 8px rgba(232, 93, 76, .35);
 }
+.seat.occ.family {
+  background: linear-gradient(180deg, #c95a78, #8e3650);
+  box-shadow: inset 0 -3px 0 #5c2236, 0 0 8px rgba(201, 90, 120, .35);
+}
 .seat.aisle { background: var(--aisle); opacity: .3; }
+
+.legend {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font-size: .78rem; color: #b8d8c2;
+}
+.legend-chip {
+  width: 14px; height: 14px; border-radius: 3px 3px 5px 5px; display: inline-block;
+}
+.legend-chip.family {
+  background: linear-gradient(180deg, #3f7a52, #2c5a3c);
+  box-shadow: 0 0 0 1px rgba(125, 222, 160, .55);
+}
+.hint { font-size: .8rem; color: var(--cinema-muted); margin: 0 0 .75rem; max-width: 720px; }
+.checkbox { display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
+.checkbox input { width: auto; margin: 0; }
+.ok.inline { margin: 0 0 0 .5rem; font-size: .78rem; white-space: nowrap; }

@@ -84,12 +84,36 @@ def find_bond_across_rows(
     seats_by_row: dict[int, list[SeatCell]],
     holds: list[HoldSpan],
     party_size: int,
+    allowed_rows: set[int] | None = None,
 ) -> HoldSpan | None:
+    """Find a block scanning rows top-to-bottom.
+
+    When ``allowed_rows`` is given, only those rows are searched. This enforces
+    the family-row constraint: child parties search only family rows and never
+    "make do" in a normal row, while ordinary parties pass the non-family rows.
+    """
     for row in sorted(seats_by_row.keys()):
+        if allowed_rows is not None and row not in allowed_rows:
+            continue
         block = find_contiguous_block(seats_by_row[row], holds, row, party_size)
         if block is not None:
             return block
     return None
+
+
+def free_seat_count(
+    seats_by_row: dict[int, list[SeatCell]],
+    holds: list[HoldSpan],
+    rows: set[int],
+) -> int:
+    """Count non-aisle, unoccupied seats across the given rows."""
+    total = 0
+    for row in rows:
+        taken = occupied_cols(holds, row)
+        for cell in seats_by_row.get(row, []):
+            if not cell.is_aisle and cell.col not in taken:
+                total += 1
+    return total
 
 
 def conflicts_with(existing: list[HoldSpan], candidate: HoldSpan) -> list[HoldSpan]:
